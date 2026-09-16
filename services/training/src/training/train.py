@@ -7,7 +7,7 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 
-def train(dataset_path: Path, output_dir: Path, base_model: str = "meta-llama/Meta-Llama-3-8B"):
+def train(dataset_path: Path, output_dir: Path, base_model: str = "meta-llama/Meta-Llama-3.1-8B"):
     """Fine-tune a model on bossa arrangement examples using QLoRA.
 
     Args:
@@ -88,7 +88,7 @@ def train(dataset_path: Path, output_dir: Path, base_model: str = "meta-llama/Me
         tokenizer=tokenizer,
         train_dataset=dataset,
         args=training_args,
-        max_seq_length=4096,
+        max_seq_length=8192,
     )
 
     logger.info("Starting training")
@@ -105,7 +105,7 @@ def main():
     parser = argparse.ArgumentParser(description="Fine-tune model for bossa arrangement")
     parser.add_argument("--dataset", type=Path, required=True, help="Path to training JSONL")
     parser.add_argument("--output", type=Path, default=Path("models/bossa-lora"))
-    parser.add_argument("--base-model", default="meta-llama/Meta-Llama-3-8B")
+    parser.add_argument("--base-model", default="meta-llama/Meta-Llama-3.1-8B")
     args = parser.parse_args()
 
     logging.basicConfig(level=logging.INFO)

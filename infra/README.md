@@ -9,7 +9,7 @@ This folder only adds what is specific to the composer/LLM workload.
 
 | Node | Hardware | Role | Workloads |
 |---|---|---|---|
-| 1972-console (192.168.68.201) | RPi — CI/CD | kubeadm control plane, GitHub Actions | Ansible, runs playbooks |
+| 1972-console-1 (192.168.68.201) | RPi — CI/CD | kubeadm control plane, GitHub Actions | Ansible, runs playbooks |
 | 1972-master-1 (192.168.68.202) | RPi5 | Kubernetes master | API server |
 | 1972-worker-1/2 (203/204) | RPi4 | Kubernetes workers | General workloads |
 | 1972-home (192.168.68.205) | PC — Linux boot | Kubernetes GPU worker | **llm-server, training** |
@@ -27,7 +27,7 @@ infra/
       setup-gpu-node.yaml  # Automated: NVIDIA drivers, kubeadm join, firewall
       deploy-services.yaml # Deploy composer K8s services
     inventory/
-      hosts.yaml           # Reference/dev inventory (deployed inventory is on 1972-console)
+      hosts.yaml           # Reference/dev inventory (deployed inventory is on 1972-console-1)
   k8s/
     namespace.yaml         # Kubernetes namespace
     composer/              # Composer service K8s manifests
@@ -35,12 +35,12 @@ infra/
 
 ## Deployed Inventory
 
-The live Ansible inventory on 1972-console (`/etc/ansible/hosts`) is the source of truth.
+The live Ansible inventory on 1972-console-1 (`/etc/ansible/hosts`) is the source of truth.
 It is generated from `eightbitsaxlounge/server/templates/ansiblehosts.j2` and includes
 the `[gpu_nodes]` group. To re-deploy it after changes to `vars.yaml` or `ansiblehosts.j2`:
 
 ```bash
-# On 1972-console
+# On 1972-console-1
 cd ~/nineteenseventytwo-eightbitsaxlounge/server
 make init-console-config
 ```
@@ -83,11 +83,11 @@ In the installer:
 
 ### 4 — Bootstrap SSH (manual, ~2 minutes)
 
-On 1972-console, the `pi-to-midi-host` key was already created by `init-pc.yaml`.
+On 1972-console-1, the `pi-to-midi-host` key was already created by `init-pc.yaml`.
 Pass its public key to the bootstrap script:
 
 ```bash
-# On 1972-console — get the public key
+# On 1972-console-1 — get the public key
 cat ~/.ssh/pi-to-midi-host.pub
 
 # On the new Ubuntu node
@@ -100,7 +100,7 @@ The script creates the `mchellmer` user, configures the SSH key, and opens UFW p
 ### 5 — Re-deploy the Ansible inventory
 
 If you have not already updated `ansiblehosts.j2` and `vars.yaml` in the eightbitsaxlounge repo,
-do that first (they already include the `[gpu_nodes]` group). Then on 1972-console:
+do that first (they already include the `[gpu_nodes]` group). Then on 1972-console-1:
 
 ```bash
 cd ~/nineteenseventytwo-eightbitsaxlounge/server
@@ -110,13 +110,13 @@ make init-console-config
 ### 6 — Verify connectivity
 
 ```bash
-# On 1972-console
+# On 1972-console-1
 ansible gpu_nodes -m ping
 ```
 
 ### 7 — Run the GPU node setup playbook
 
-From 1972-console:
+From 1972-console-1:
 
 ```bash
 cd ~/nineteenseventytwo-eightbitsaxlounge/server

@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "musicxml-tools"
@@ -8,7 +8,14 @@ dynamic = ["version"]
 description = "MusicXML parsing, voice splitting, and score assembly for bossa arrangement"
 requires-python = ">=3.12"
 dependencies = [
-    "music21>=9.1",
+    # Upper bound is deliberate. An unpinned floor is why the drum generator
+    # sat broken (finding C14): music21 10 made `Unpitched.displayName`
+    # read-only and nothing caught it, because CI pointed at a runner that no
+    # longer existed (C9). Same lesson as eightbitsaxlounge's unpinned base
+    # images — verify before widening.
+    "music21>=10.5,<11",
+    # Validates model output against the generated IR schema (schema.py).
+    "jsonschema>=4.21,<5",
 ]
 
 [project.optional-dependencies]

@@ -9,9 +9,19 @@ on:
     paths:
       - 'services/musicxml-tools/**'
 
+# Hosted runners only. A `pull_request` trigger on a public repo pointed at a
+# self-hosted runner is a documented remote-code-execution path — a fork PR can
+# run arbitrary code on a machine inside VLAN 20 — and is what ADR-0010 exists
+# to prevent. The org's ARC scale sets are addressed by name (`lab-dind`,
+# `lab-deploy`) rather than by the `self-hosted` label, so these jobs found no
+# runner and never ran; that is an accident, not a control.
+#
+# arm64 because the cluster is arm64-only (ADR-0011), so this is also the
+# architecture the image has to build for.
+
 jobs:
   test:
-    runs-on: self-hosted
+    runs-on: ubuntu-24.04-arm
     defaults:
       run:
         working-directory: services/musicxml-tools
@@ -34,7 +44,7 @@ jobs:
   build:
     needs: test
     if: github.ref == 'refs/heads/main'
-    runs-on: self-hosted
+    runs-on: ubuntu-24.04-arm
     defaults:
       run:
         working-directory: services/musicxml-tools

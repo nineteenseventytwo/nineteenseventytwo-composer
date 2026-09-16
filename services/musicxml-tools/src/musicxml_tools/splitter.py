@@ -44,17 +44,28 @@ def split_voices(score: music21.stream.Score) -> SplitParts:
     bass_part = parts[1]
 
     melody = _extract_top_voice(treble_part, "Alto Sax")
-    harmony = _extract_inner_voices(treble_part, bass_part, "Piano")
     bass = _extract_bottom_voice(bass_part, "Bass")
+    harmony = _extract_harmony(score, melody, bass, "Piano")
 
     return SplitParts(melody=melody, harmony=harmony, bass=bass, metadata=metadata)
 
 
+def _measure_events(measure: music21.stream.Measure):
+    """Yield a measure's notes and rests, including any nested inside Voices.
+
+    ``Measure.notesAndRests`` does **not** descend into ``music21.stream.Voice``,
+    so a voiced staff silently loses every note inside its voices — 36% of the
+    notes on one of the reference scores (finding C11). Flattening first lifts
+    voice contents up with their measure-relative offsets intact, and is a
+    no-op on measures that have no voices.
+    """
+    return measure.flatten().notesAndRests
+
+
 def _extract_metadata(score: music21.stream.Score) -> dict:
     """Extract score metadata (title, tempo, key, time signature)."""
-    md = score.metadata
     meta = {
-        "title": md.title if md and md.title else "Untitled",
+        "title": _extract_title(score),
     }
 
     # Get tempo
@@ -64,12 +75,12 @@ def _extract_metadata(score: music21.stream.Score) -> dict:
     else:
         meta["tempo"] = 120  # default
 
-    # Get key signature
-    keys = score.flatten().getElementsByClass(music21.key.KeySignature)
-    if keys:
-        meta["key"] = str(keys[0])
-    else:
-        meta["key"] = "C major"
+    # Get key. Two separate facts, reported separately: the analysed tonal
+    # centre and the signature as written. Key analysis is a heuristic and can
+    # disagree with the signature — on the reference corpus it does — so
+    # collapsing them into one field would hide a real ambiguity from the model.
+    meta["key"] = _extract_key_name(score)
+    meta["key_signature"] = _extract_key_signature_name(score)
 
     # Get time signature
     time_sigs = score.flatten().getElementsByClass(music21.meter.TimeSignature)
@@ -78,7 +89,127 @@ def _extract_metadata(score: music21.stream.Score) -> dict:
     else:
         meta["time_signature"] = "4/4"
 
+    # A pickup bar has to be carried explicitly. Offsets alone cannot express
+    # it: every later measure sits 1.5 beats early, and a reconstruction that
+    # bars from zero assuming full measures mis-bars the entire score. Common
+    # enough in the target repertoire to be worth a field of its own.
+    meta["pickup"] = _extract_pickup(score)
+
     return meta
+
+
+def _extract_pickup(score: music21.stream.Score) -> float:
+    """Length of a partial opening bar, or 0.0 if the score starts on beat 1."""
+    for part in score.parts:
+        measures = list(part.getElementsByClass(music21.stream.Measure))
+        if not measures:
+            continue
+        first = measures[0]
+        content = float(first.duration.quarterLength)
+        full = float(first.barDuration.quarterLength)
+        if 0 < content < full:
+            return content
+        return 0.0
+    return 0.0
+
+
+_SCORE_SUFFIXES = (".mxl", ".musicxml", ".xml")
+
+
+def _extract_title(score: music21.stream.Score) -> str:
+    """Best available title, falling back through movement name.
+
+    When a file carries no title of its own, music21 populates ``title`` from
+    the filename — extension included — so strip a trailing score suffix
+    rather than telling the model the piece is called "... .mxl".
+    """
+    md = score.metadata
+    if md:
+        for candidate in (md.title, md.movementName):
+            if not candidate:
+                continue
+            text = str(candidate).strip().strip('"')
+            for suffix in _SCORE_SUFFIXES:
+                if text.lower().endswith(suffix):
+                    text = text[: -len(suffix)]
+                    break
+            if text.strip():
+                return text.strip()
+    return "Untitled"
+
+
+def _extract_key_name(score: music21.stream.Score) -> str:
+    """A human-readable key name — never a Python repr.
+
+    ``str()`` on a bare ``KeySignature`` yields
+    ``"<music21.key.KeySignature of 3 sharps>"``, which was being sent to the
+    model as if it were a key (finding C1). Prefer an explicit ``Key`` in the
+    score, then analysis, then the signature interpreted as major.
+    """
+    flat = score.flatten()
+
+    explicit = list(flat.getElementsByClass(music21.key.Key))
+    if explicit:
+        return explicit[0].name
+
+    try:
+        analysed = score.analyze("key")
+        if analysed is not None:
+            return analysed.name
+    except Exception:  # noqa: BLE001, S110 - music21 analysis raises an
+        # undocumented range of types; a signature beats a repr, so fall through
+        pass
+
+    signatures = list(flat.getElementsByClass(music21.key.KeySignature))
+    if signatures:
+        return signatures[0].asKey().name
+
+    return "C major"
+
+
+def _extract_key_signature_name(score: music21.stream.Score) -> str:
+    """The key signature as written, interpreted as major — never a repr."""
+    signatures = list(score.flatten().getElementsByClass(music21.key.KeySignature))
+    if not signatures:
+        return "C major"
+    first = signatures[0]
+    if isinstance(first, music21.key.Key):
+        return first.name
+    return first.asKey().name
+
+
+def _bar_length(measure: music21.stream.Measure) -> float:
+    """The notated length of a bar, falling back to its actual content."""
+    try:
+        return float(measure.barDuration.quarterLength)
+    except Exception:  # noqa: BLE001 - music21 raises an undocumented range of types; this
+        # path is best-effort by design and has a defined fallback
+        return float(measure.duration.quarterLength)
+
+
+def _insert_monophonic(
+    measure: music21.stream.Measure,
+    selections: list[tuple[float, object]],
+    bar_length: float,
+) -> None:
+    """Insert selected events, trimming each so it ends before the next begins.
+
+    Melody and bass are single lines. Recovering notes from inside voices
+    (finding C11) means an event can now start while a longer one is still
+    sounding, and a Part holding overlapping notes cannot be engraved on one
+    staff — a reader drops or mangles it, which is why two of the reference
+    scores rendered with no sax and no bass at all. Trimming each event to the
+    next onset makes the line monophonic by construction.
+    """
+    offsets = [offset for offset, _ in selections]
+
+    for index, (offset, element) in enumerate(selections):
+        limit = offsets[index + 1] if index + 1 < len(offsets) else bar_length
+        length = min(float(element.quarterLength), max(limit - offset, 0.0))
+        if length <= 0:
+            continue
+        element.quarterLength = length
+        measure.insert(offset, element)
 
 
 def _extract_top_voice(part: music21.stream.Part, name: str) -> music21.stream.Part:
@@ -97,7 +228,7 @@ def _extract_top_voice(part: music21.stream.Part, name: str) -> music21.stream.P
 
         # Group notes by offset to find the highest at each beat
         notes_by_offset: dict[float, list[music21.note.Note]] = {}
-        for elem in measure.notesAndRests:
+        for elem in _measure_events(measure):
             offset = elem.offset
             if isinstance(elem, music21.note.Note):
                 notes_by_offset.setdefault(offset, []).append(elem)
@@ -109,19 +240,29 @@ def _extract_top_voice(part: music21.stream.Part, name: str) -> music21.stream.P
             elif isinstance(elem, music21.note.Rest):
                 notes_by_offset.setdefault(offset, []).append(elem)
 
+        selections: list[tuple[float, object]] = []
         for offset in sorted(notes_by_offset.keys()):
             notes = notes_by_offset[offset]
             actual_notes = [n for n in notes if isinstance(n, music21.note.Note)]
             if actual_notes:
                 highest = max(actual_notes, key=lambda n: n.pitch.midi)
-                new_measure.insert(offset, music21.note.Note(
+                selections.append((float(offset), music21.note.Note(
                     highest.pitch, quarterLength=highest.quarterLength
-                ))
+                )))
             else:
-                # Only rests at this offset
-                new_measure.insert(offset, notes[0])
+                # Only rests at this offset. Build a fresh Rest rather than
+                # reusing the source object, which _insert_monophonic trims.
+                selections.append((float(offset), music21.note.Rest(
+                    quarterLength=notes[0].quarterLength
+                )))
 
-        new_part.append(new_measure)
+        _insert_monophonic(new_measure, selections, _bar_length(measure))
+
+        # insert, never append: append() places a measure at the stream's
+        # current highestTime, so any measure whose content is shorter than a
+        # full bar drags every later measure earlier and the part drifts out of
+        # alignment with the rest of the score. Sparse harmony drifts worst.
+        new_part.insert(measure.offset, new_measure)
 
     return new_part
 
@@ -140,7 +281,7 @@ def _extract_bottom_voice(part: music21.stream.Part, name: str) -> music21.strea
             new_measure.insert(elem.offset, elem)
 
         notes_by_offset: dict[float, list[music21.note.Note]] = {}
-        for elem in measure.notesAndRests:
+        for elem in _measure_events(measure):
             offset = elem.offset
             if isinstance(elem, music21.note.Note):
                 notes_by_offset.setdefault(offset, []).append(elem)
@@ -151,32 +292,121 @@ def _extract_bottom_voice(part: music21.stream.Part, name: str) -> music21.strea
             elif isinstance(elem, music21.note.Rest):
                 notes_by_offset.setdefault(offset, []).append(elem)
 
+        selections: list[tuple[float, object]] = []
         for offset in sorted(notes_by_offset.keys()):
             notes = notes_by_offset[offset]
             actual_notes = [n for n in notes if isinstance(n, music21.note.Note)]
             if actual_notes:
                 lowest = min(actual_notes, key=lambda n: n.pitch.midi)
-                new_measure.insert(offset, music21.note.Note(
+                selections.append((float(offset), music21.note.Note(
                     lowest.pitch, quarterLength=lowest.quarterLength
-                ))
+                )))
             else:
-                new_measure.insert(offset, notes[0])
+                selections.append((float(offset), music21.note.Rest(
+                    quarterLength=notes[0].quarterLength
+                )))
 
-        new_part.append(new_measure)
+        _insert_monophonic(new_measure, selections, _bar_length(measure))
+
+        # insert, never append: append() places a measure at the stream's
+        # current highestTime, so any measure whose content is shorter than a
+        # full bar drags every later measure earlier and the part drifts out of
+        # alignment with the rest of the score. Sparse harmony drifts worst.
+        new_part.insert(measure.offset, new_measure)
 
     return new_part
 
 
-def _extract_inner_voices(
-    treble: music21.stream.Part,
+def _merged_chords(measure: music21.stream.Measure, claims: dict) -> list[list]:
+    """Chords in a chordified measure, with runs of identical pitch sets merged.
+
+    ``chordify()`` emits a chord at every rhythmic event anywhere in the score,
+    so a harmony held under a moving melody becomes a run of identical chords.
+    Collapsing each run into one longer chord keeps the harmony readable and
+    cuts the size of the intermediate representation, which is the binding
+    constraint on this pipeline (finding C1).
+
+    Returns:
+        A list of ``[offset, quarterLength, pitches]``, pitches ascending.
+    """
+    runs: list[list] = []
+
+    for elem in measure.flatten().notesAndRests:
+        if not isinstance(elem, music21.chord.Chord):
+            continue
+        offset = float(elem.offset)
+        pitches = tuple(
+            p.nameWithOctave for p in elem.sortAscending().pitches
+            if not _is_claimed(claims, measure.number, p.nameWithOctave, offset)
+        )
+        if not pitches:
+            continue
+        if runs and runs[-1][2] == pitches:
+            runs[-1][1] += float(elem.quarterLength)
+        else:
+            runs.append([float(elem.offset), float(elem.quarterLength), pitches])
+
+    return runs
+
+
+def _claimed_intervals(*parts: music21.stream.Part) -> dict:
+    """Map ``(measure number, pitch)`` to the spans where a part already owns it.
+
+    Harmony is whatever the melody and bass did **not** take. Deciding that by
+    position — dropping the top and bottom pitch of each chord — is wrong
+    whenever fewer than three pitches sound: at a moment where only two treble
+    notes sound and the bass is silent, both get dropped and the lower one
+    belongs to nothing. Spans rather than instants, because a melody note
+    sustains across the onsets at which ``chordify()`` re-articulates it.
+    """
+    claims: dict = {}
+    for part in parts:
+        for measure in part.getElementsByClass(music21.stream.Measure):
+            for elem in measure.flatten().notes:
+                start = float(elem.offset)
+                end = start + float(elem.quarterLength)
+                for pch in elem.pitches:
+                    claims.setdefault((measure.number, pch.nameWithOctave), []).append(
+                        (start, end)
+                    )
+    return claims
+
+
+def _is_claimed(claims: dict, measure_number, pitch_name: str, offset: float) -> bool:
+    """True if a part already owns this pitch at this moment in this bar."""
+    for start, end in claims.get((measure_number, pitch_name), ()):
+        if start <= offset < end:
+            return True
+    return False
+
+
+def _extract_harmony(
+    score: music21.stream.Score,
+    melody: music21.stream.Part,
     bass: music21.stream.Part,
     name: str,
 ) -> music21.stream.Part:
-    """Extract inner voices (everything except top treble and bottom bass)."""
+    """Reduce the whole texture to its inner harmonic content.
+
+    Replaces the previous hand-rolled inner-voice extraction, which only looked
+    at ``Chord`` elements with more than one pitch and ignored bare ``Note``s
+    entirely — so a two-part texture written as independent notes lost its
+    lower line completely, and harmony came out starved (finding C11).
+
+    ``chordify()`` sees every note at every offset, across both staves and
+    inside voices. Harmony is then everything the melody and bass did not
+    already claim — subtracted by identity rather than by position, so a
+    two-note treble moment with a silent bass keeps its lower voice. This is
+    also the harmonic reduction the decision-based architecture wants as input
+    (finding C5), so it is the fix and the groundwork in one.
+    """
+    chordified = score.chordify(removeRedundantPitches=True)
+    claims = _claimed_intervals(melody, bass)
+
     new_part = music21.stream.Part()
     new_part.partName = name
 
-    for measure in treble.getElementsByClass(music21.stream.Measure):
+    for measure in chordified.getElementsByClass(music21.stream.Measure):
         new_measure = music21.stream.Measure(number=measure.number)
 
         for elem in measure.getElementsByClass(
@@ -184,42 +414,33 @@ def _extract_inner_voices(
         ):
             new_measure.insert(elem.offset, elem)
 
-        for elem in measure.notesAndRests:
-            if isinstance(elem, music21.chord.Chord) and len(elem.pitches) > 1:
-                # Remove the top note (that went to melody), keep the rest
-                remaining = elem.sortAscending().pitches[:-1]
-                if len(remaining) == 1:
-                    n = music21.note.Note(remaining[0], quarterLength=elem.quarterLength)
-                    new_measure.insert(elem.offset, n)
-                elif len(remaining) > 1:
-                    c = music21.chord.Chord(remaining, quarterLength=elem.quarterLength)
-                    new_measure.insert(elem.offset, c)
+        bar_length = _bar_length(measure)
 
-        new_part.append(new_measure)
+        for offset, length, pitches in _merged_chords(measure, claims):
+            inner = tuple(
+                p for p in pitches
+                if not _is_claimed(claims, measure.number, p, offset)
+            )
+            if not inner:
+                continue
+            # Clamp to the bar. chordify() emits chords that tie across
+            # barlines, so an unclamped chord near the end of a bar spills past
+            # it — the bar then engraves as 4.25 or 6.5 quarter notes and the
+            # harmony staff drifts out of alignment with every other part.
+            length = min(length, bar_length - offset)
+            if length <= 0:
+                continue
+            if len(inner) == 1:
+                elem = music21.note.Note(inner[0], quarterLength=length)
+            else:
+                elem = music21.chord.Chord(list(inner), quarterLength=length)
+            new_measure.insert(offset, elem)
 
-    # Also grab inner voices from bass staff (everything except bottom note)
-    for measure in bass.getElementsByClass(music21.stream.Measure):
-        measure_num = measure.number
-        # Find or create the corresponding measure in new_part
-        existing = None
-        for m in new_part.getElementsByClass(music21.stream.Measure):
-            if m.number == measure_num:
-                existing = m
-                break
-
-        if existing is None:
-            existing = music21.stream.Measure(number=measure_num)
-            new_part.append(existing)
-
-        for elem in measure.notesAndRests:
-            if isinstance(elem, music21.chord.Chord) and len(elem.pitches) > 1:
-                remaining = elem.sortAscending().pitches[1:]  # remove bottom
-                if len(remaining) == 1:
-                    n = music21.note.Note(remaining[0], quarterLength=elem.quarterLength)
-                    existing.insert(elem.offset, n)
-                elif len(remaining) > 1:
-                    c = music21.chord.Chord(remaining, quarterLength=elem.quarterLength)
-                    existing.insert(elem.offset, c)
+        # insert, never append: append() places a measure at the stream's
+        # current highestTime, so any measure whose content is shorter than a
+        # full bar drags every later measure earlier and the part drifts out of
+        # alignment with the rest of the score. Sparse harmony drifts worst.
+        new_part.insert(measure.offset, new_measure)
 
     return new_part
 
@@ -241,7 +462,7 @@ def _split_single_staff(part: music21.stream.Part, metadata: dict) -> SplitParts
         har_m = music21.stream.Measure(number=measure.number)
         bas_m = music21.stream.Measure(number=measure.number)
 
-        for elem in measure.notesAndRests:
+        for elem in _measure_events(measure):
             if isinstance(elem, music21.note.Note):
                 if elem.pitch.midi >= mid_split + 12:
                     mel_m.insert(elem.offset, elem)
@@ -275,8 +496,8 @@ def _split_single_staff(part: music21.stream.Part, metadata: dict) -> SplitParts
                 mel_m.insert(elem.offset, elem)
                 bas_m.insert(elem.offset, music21.note.Rest(quarterLength=elem.quarterLength))
 
-        melody.append(mel_m)
-        harmony.append(har_m)
-        bass.append(bas_m)
+        melody.insert(measure.offset, mel_m)
+        harmony.insert(measure.offset, har_m)
+        bass.insert(measure.offset, bas_m)
 
     return SplitParts(melody=melody, harmony=harmony, bass=bass, metadata=metadata)
