@@ -1889,15 +1889,19 @@ eightbitsaxlounge migration.
 - [ ] Rewrite the three workflows: build/test on hosted runners
       (`ubuntu-24.04-arm`), publish to GHCR. **Delete `deploy.yaml`** — Argo CD
       deploys now
-- [ ] **Delete `infra/`** (**C8**) — both `k8s/` (ADR-0012) and `ansible/`
-      (superseded by P2's role in the platform repo). **After** P2 has salvaged
-      the NVIDIA/toolkit tasks and the partitioning guidance out of it
-- [ ] Rewrite `README.md` and `docs/architecture.md`. Both describe the
-      rejected D1(a) architecture — a GPU node *in the cluster*, composer
-      scheduled onto it via `nodeSelector: workload: llm`, `llm-server` as a
-      Kubernetes Deployment. Under **D-A** the host runs containers but Ollama
-      is not a cluster workload, so `services/llm-server/k8s/` goes with the
-      rest of `infra/k8s/`; what replaces it is the platform role from P2
+- [x] **Delete `infra/`** (**C8**) — **done 2026-09-16.** Both `k8s/`
+      (ADR-0012) and `ansible/`. The salvage material is recoverable rather
+      than lost: `git show 8fdf2da:infra/ansible/playbooks/setup-gpu-node.yaml`
+      has the NVIDIA driver and container-toolkit tasks, and
+      `git show 8fdf2da:infra/README.md` the storage and partitioning guidance,
+      for P2's GPU-host role
+- [x] Rewrite `README.md` and `docs/architecture.md` — **done 2026-09-16**,
+      along with `services/llm-server/` and `docs/services/llm-server.md`.
+      Both documents described the rejected D1(a) architecture, which meant the
+      repo's own front page taught a reader the wrong model of the system.
+      The doc sweep also caught live code: `DEFAULT_BASE_URL` still pointed at
+      `http://llm-server:11434`, a Service that no longer exists in any
+      manifest
 
 **Gate:** the repo is in the org, a PR runs CI on a hosted runner, `infra/` is
 gone, and no document in the repo describes a cluster that does not exist.
