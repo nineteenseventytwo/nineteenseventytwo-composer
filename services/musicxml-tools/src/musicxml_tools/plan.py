@@ -24,6 +24,7 @@ import music21
 from musicxml_tools.chords import BarChord
 from musicxml_tools.comping import BASS_TREATMENTS, DENSITIES
 from musicxml_tools.form import Phrase, detect_form, phrase_for, summarise
+from musicxml_tools.reharmonise import Candidate, candidate_map, normalise_figure
 
 DENSITY_NAMES = tuple(DENSITIES)
 
@@ -70,8 +71,13 @@ class ArrangementPlan:
         """Return the chords with any accepted substitutions swapped in."""
         if not self.substitutions:
             return chords
-        return [substitute(c, self.substitutions[c.bar]) or c
-                if c.bar in self.substitutions else c for c in chords]
+        offered = candidate_map(chords)
+        return [
+            (substitute(c, self.substitutions[c.bar], offered.get(c.bar)) or c)
+            if c.bar in self.substitutions
+            else c
+            for c in chords
+        ]
 
     def describe(self) -> str:
         densities = {b.density for b in self.bars}
@@ -89,9 +95,13 @@ class ArrangementPlan:
 
 
 def chord_pitch_classes(figure: str) -> set[int] | None:
-    """The pitch classes of a chord symbol, or None if it cannot be read."""
+    """The pitch classes of a chord symbol, or None if it cannot be read.
+
+    Normalised first: music21 silently misreads ``Db7`` as ``D7`` and rejects
+    ``Bbmaj7``. A wrong chord that parses is worse than one that fails.
+    """
     try:
-        symbol = music21.harmony.ChordSymbol(figure)
+        symbol = music21.harmony.ChordSymbol(normalise_figure(figure))
     except Exception:  # noqa: BLE001 - music21 raises an undocumented range of types; this
         # path is best-effort by design and has a defined fallback
         return None
@@ -99,8 +109,21 @@ def chord_pitch_classes(figure: str) -> set[int] | None:
     return classes or None
 
 
-def is_related(chord: BarChord, figure: str) -> bool:
-    """Is a proposed chord a substitution, or a different piece of music?"""
+def is_related(
+    chord: BarChord, figure: str, offered: list[Candidate] | None = None
+) -> bool:
+    """Is a proposed chord a substitution, or a different piece of music?
+
+    Anything from the generated menu is accepted outright: those are
+    constructed from the harmony and are correct by derivation. The
+    shared-tones test is the fallback for a figure nobody offered — and it
+    would reject several legitimate moves on its own, since a tritone
+    substitution shares only one tone with the chord it displaces.
+    """
+    normalised = normalise_figure(figure)
+    if offered and any(normalise_figure(c.figure) == normalised for c in offered):
+        return True
+
     proposed = chord_pitch_classes(figure)
     if proposed is None:
         return False
@@ -108,15 +131,17 @@ def is_related(chord: BarChord, figure: str) -> bool:
     return len(proposed & existing) >= MIN_SHARED_TONES
 
 
-def substitute(chord: BarChord, figure: str) -> BarChord | None:
+def substitute(
+    chord: BarChord, figure: str, offered: list[Candidate] | None = None
+) -> BarChord | None:
     """Swap a chord for a related one, or None if the swap is not legitimate."""
-    if not is_related(chord, figure):
+    if not is_related(chord, figure, offered):
         return None
     classes = chord_pitch_classes(figure)
     if not classes:
         return None
     try:
-        root = music21.harmony.ChordSymbol(figure).root().name
+        root = music21.harmony.ChordSymbol(normalise_figure(figure)).root().name
     except Exception:  # noqa: BLE001 - music21 raises an undocumented range of types; this
         # path is best-effort by design and has a defined fallback
         return None
@@ -135,14 +160,16 @@ OCCURRENCE_DENSITY = ("normal", "busy", "sparse")
 
 
 def plan_from_form(
-    chords: list[BarChord], phrase_length: int = 4
+    chords: list[BarChord], phrase_length: int = 4, reharmonise: bool = True
 ) -> ArrangementPlan:
-    """A fixed policy: vary on repeats, and lead into every chord change."""
+    """A fixed policy: vary on repeats, lead into changes, turn repeats around."""
     phrases = detect_form(chords, phrase_length)
     if not phrases:
         return ArrangementPlan()
 
     next_chord = {c.bar: n.figure for c, n in pairwise(chords)}
+    offered = candidate_map(chords)
+    substitutions: dict[int, str] = {}
     bars: list[BarPlan] = []
 
     for chord in chords:
@@ -166,20 +193,52 @@ def plan_from_form(
         else:
             bass = "root-fifth"
 
+        # A turnaround into a repeat: replace the last bar with the dominant of
+        # what follows. Placed only on repeats, so a phrase is heard plain
+        # before it is heard decorated — which is both the more musical order
+        # and another way a repeat stops sounding like a loop.
+        if (
+            reharmonise
+            and phrase
+            and phrase.is_repeat
+            and is_last
+            and changes_next
+        ):
+            dominant = next(
+                (c for c in offered.get(chord.bar, []) if c.kind == "secondary-dominant"),
+                None,
+            )
+            if dominant is not None:
+                substitutions[chord.bar] = dominant.figure
+
         bars.append(BarPlan(bar=chord.bar, density=density, bass=bass))
 
-    return ArrangementPlan(bars=bars, phrases=phrases)
+    return ArrangementPlan(bars=bars, phrases=phrases, substitutions=substitutions)
 
 
-def plan_schema() -> dict[str, Any]:
+NO_SUBSTITUTION = "none"
+
+
+def plan_schema(menu: dict[int, list[Candidate]] | None = None) -> dict[str, Any]:
     """JSON Schema for a plan a model can return.
 
     Decisions are **per phrase**, not per bar: that is where they belong
     musically, and it keeps the response small — 28 phrases rather than 112
     bars on the longest score in the corpus. Substitutions are the exception,
     because reharmonising is a targeted act on one bar.
+
+    When a menu is supplied, `turnarounds` becomes **required** and its chords
+    are constrained to the offered figures plus "none". Left optional, the
+    model omitted the key entirely on every score in the corpus — a
+    constrained decoder takes the shortest legal path, and an absent key is
+    shorter than a considered one. Requiring an answer per opportunity, with
+    declining as an explicit option, asks for the judgement instead of hoping
+    for it.
     """
-    return {
+    bars = sorted(menu or {})
+    figures = sorted({c.figure for options in (menu or {}).values() for c in options})
+
+    schema: dict[str, Any] = {
         "type": "object",
         "required": ["phrases"],
         "additionalProperties": False,
@@ -197,20 +256,52 @@ def plan_schema() -> dict[str, Any]:
                     },
                 },
             },
-            "substitutions": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "required": ["bar", "chord"],
-                    "additionalProperties": False,
-                    "properties": {
-                        "bar": {"type": "integer", "minimum": 0},
-                        "chord": {"type": "string"},
-                    },
-                },
-            },
         },
     }
+
+    if bars:
+        schema["required"].append("turnarounds")
+        schema["properties"]["turnarounds"] = {
+            "type": "array",
+            "minItems": len(bars),
+            "maxItems": len(bars),
+            "items": {
+                "type": "object",
+                "required": ["bar", "chord"],
+                "additionalProperties": False,
+                "properties": {
+                    "bar": {"enum": bars},
+                    "chord": {"enum": [*figures, NO_SUBSTITUTION]},
+                },
+            },
+        }
+
+    return schema
+
+
+def substitution_menu(
+    chords: list[BarChord], phrases: list[Phrase]
+) -> dict[int, list[Candidate]]:
+    """Where a substitution belongs, and what it could be.
+
+    Offered only at phrase ends that lead into a chord change. Every bar could
+    take one, but a turnaround is a cadential gesture — and listing candidates
+    for 112 bars would cost more prompt than the whole rest of the description.
+    """
+    offered = candidate_map(chords)
+    next_figure = {c.bar: n.figure for c, n in pairwise(chords)}
+
+    menu: dict[int, list[Candidate]] = {}
+    for phrase in phrases:
+        last = phrase.start + phrase.length - 1
+        chord = next((c for c in chords if c.bar == last), None)
+        if chord is None:
+            continue
+        if next_figure.get(last) in (None, chord.figure):
+            continue
+        if offered.get(last):
+            menu[last] = offered[last]
+    return menu
 
 
 def describe_for_model(chords: list[BarChord], phrases: list[Phrase], key: str) -> str:
@@ -231,6 +322,16 @@ def describe_for_model(chords: list[BarChord], phrases: list[Phrase], key: str) 
             f"  {phrase.index}  {phrase.label}  bars {phrase.start}-"
             f"{phrase.start + phrase.length - 1}  {figures}  (heard {phrase.occurrence}x)"
         )
+
+    menu = substitution_menu(chords, phrases)
+    if menu:
+        lines += ["", "Substitutions available (choose by bar and exact chord, or none):"]
+        for bar in sorted(menu):
+            current = by_bar.get(bar, "-")
+            lines.append(f"  bar {bar}  currently {current}:")
+            for candidate in menu[bar]:
+                lines.append(f"     {candidate.figure:9s} {candidate.reason}")
+
     return "\n".join(lines)
 
 
@@ -254,14 +355,18 @@ def plan_from_model(
     next_figure = {c.bar: n.figure for c, n in pairwise(chords)}
     by_bar_chord = {c.bar: c for c in chords}
 
+    offered = candidate_map(chords)
     substitutions: dict[int, str] = {}
     rejected: list[str] = []
-    for entry in response.get("substitutions", []):
+    proposals = response.get("turnarounds", response.get("substitutions", []))
+    for entry in proposals:
+        if entry.get("chord") == NO_SUBSTITUTION:
+            continue
         bar, figure = entry.get("bar"), entry.get("chord", "")
         chord = by_bar_chord.get(bar)
         if chord is None:
             rejected.append(f"bar {bar}: no such bar")
-        elif not is_related(chord, figure):
+        elif not is_related(chord, figure, offered.get(bar)):
             rejected.append(f"bar {bar}: {figure!r} unrelated to {chord.figure}")
         else:
             substitutions[bar] = figure

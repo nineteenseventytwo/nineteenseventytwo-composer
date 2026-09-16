@@ -44,7 +44,7 @@ both halves of it, for two different reasons (**C8**).
 
 ## Findings — settle these before anything is deployed
 
-Twenty-eight. Seventeen are application bugs — **C1's corpus landed on 2026-09-13;
+Twenty-nine. Eighteen are application bugs — **C1's corpus landed on 2026-09-13;
 five were found by running it and seven more by opening the output in MuseScore
 and listening to it. C1, C11, C14, C15, C16, C17, C18, C19 and C20 are now
 fixed, and C21 realigns the output with its target hardware.**
@@ -1315,6 +1315,59 @@ architectural one.
 `COMPOSER_ARRANGER=plan` opts in; **`deterministic` stays the default**, since
 it needs no model running and produces a complete, harmonically sound score on
 its own.
+
+### C29 — Reharmonisation: offering a menu instead of asking for invention
+
+2026-09-16. **C28** left the reharmonisation half of the plan arranger unused —
+zero substitutions proposed across the corpus. The prompt asked for them
+"sparingly" and the model read that as "never".
+
+Firmer wording was not the fix. `reharmonise.py` now derives the valid options
+— relative major/minor, secondary dominant, tritone substitution, the ii that
+sets up a ii-V — and the model **chooses from them**. Same division as
+everywhere else here: the library knows what is possible, the model decides
+what is good.
+
+**A trap found on the way in, and worth knowing about beyond this project:
+music21 silently misparses `b` flats.** `ChordSymbol("Db7")` returns D, F#, A,
+C — a D7 — and `Bbmaj7` is rejected outright. Only the `-` spelling is safe. A
+wrong chord that *parses* is far worse than one that fails, and the model can
+emit either spelling, so `normalise_figure` rewrites the accidental before
+anything reads it.
+
+**The menu had to become authoritative over the relatedness check.** A tritone
+substitution shares exactly one pitch class with the chord it displaces, so the
+two-shared-tones rule from **C28** would reject a chord the generator had just
+derived correctly. On-menu figures are now accepted outright; the shared-tones
+test remains the fallback for anything nobody offered.
+
+**Two failures of restraint, in opposite directions.** With `substitutions`
+optional in the schema, the model omitted the key on all five scores — a
+constrained decoder takes the shortest legal path, and an absent key is shorter
+than a considered one. Making `turnarounds` **required**, with one answer per
+opportunity and `"none"` as an explicit option, flipped it to choosing at
+*every* opportunity. Narrowing the menu fixed most of that:
+
+| | offers | chose | declined | kinds |
+|---|---|---|---|---|
+| Vampire Killer | 2 | 1 | 1 | relative |
+| Bubbly Clouds | 19 | 10 | 9 | **tritone ×8**, ii-of-next ×2 |
+| Green Greens | 3 | 3 | 0 | secondary-dominant ×2, tritone |
+| Dr Wily | 16 | 16 | 0 | relative ×16 |
+
+Bubbly Clouds declining nine of nineteen and reaching for the tritone
+substitution eight times is the right bossa instinct. **Dr Wily choosing at
+every opportunity and always the same kind is not judgement, it is
+pattern-matching** — an 8B model answering each item independently rather than
+weighing the piece. Recorded as a limitation rather than smoothed over.
+
+**A musical gap the model exposed.** It kept picking `G7 → Dm7`: replacing a
+dominant with the ii that precedes it, which trades a cadence for an approach
+and weakens the very moment a turnaround exists to strengthen. A bar that is
+already the dominant of what follows is now offered **only** the tritone
+substitution, which keeps the dominant function and changes the colour. The
+model found that hole by walking into it, which is a decent argument for
+letting it choose from a menu rather than constraining it to the safest option.
 
 ---
 

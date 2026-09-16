@@ -35,7 +35,12 @@ import os
 from musicxml_tools import arrange_deterministically, count_bars
 from musicxml_tools.chords import detect_chords, detect_key
 from musicxml_tools.form import detect_form
-from musicxml_tools.plan import describe_for_model, plan_from_model, plan_schema
+from musicxml_tools.plan import (
+    describe_for_model,
+    plan_from_model,
+    plan_schema,
+    substitution_menu,
+)
 
 from composer.llm_client import ChunkOutcome, LLMClient, TransformResult
 
@@ -80,10 +85,14 @@ what makes an arrangement sound like a loop. Build and release: let sections
 breathe before a busier one, thin out where the melody is doing the work. The
 target is chill, so restraint is usually right and "busy" should be rare.
 
-You may also propose chord substitutions for individual bars — a relative
-major, a passing dominant, something with more colour than the plain chord.
-Use them sparingly, at cadences and section ends. A substitution must share
-notes with the chord it replaces; unrelated chords are rejected.
+Some bars list substitutions. **Answer for every one of them** — pick a chord
+from that bar's options, or "none" to leave it alone. They are worked out from
+the harmony, so any option will fit; you are deciding which colour the moment
+wants, not whether it is legal.
+
+Prefer variety across a piece over the same move every time, and mean it when
+you say "none" — a turnaround at every phrase end is as mechanical as none at
+all. Somewhere between a third and two thirds is usually right.
 """
 
 
@@ -102,12 +111,13 @@ class PlanArranger:
 
         phrases = detect_form(chords)
         description = describe_for_model(chords, phrases, str(detect_key(ir)))
+        menu = substitution_menu(chords, phrases)
 
         try:
             response = await self.client.ask_json(
                 system=PLAN_SYSTEM_PROMPT,
                 prompt=description,
-                schema=plan_schema(),
+                schema=plan_schema(menu),
             )
         except Exception as e:  # noqa: BLE001 - any model failure must degrade to
             # the deterministic arrangement rather than lose the piece
