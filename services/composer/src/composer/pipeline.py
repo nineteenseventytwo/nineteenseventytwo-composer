@@ -6,8 +6,13 @@ import math
 from pathlib import Path
 
 import music21
-
-from musicxml_tools import parse_score, split_voices, to_intermediate, from_intermediate, assemble_score
+from musicxml_tools import (
+    assemble_score,
+    from_intermediate,
+    parse_score,
+    split_voices,
+    to_intermediate,
+)
 from musicxml_tools.assembler import write_score
 from musicxml_tools.drums import generate_bossa_drums, generate_bossa_shaker
 

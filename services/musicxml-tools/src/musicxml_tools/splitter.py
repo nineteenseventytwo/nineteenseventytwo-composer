@@ -156,7 +156,8 @@ def _extract_key_name(score: music21.stream.Score) -> str:
         analysed = score.analyze("key")
         if analysed is not None:
             return analysed.name
-    except Exception:  # analysis is best-effort; a signature is still better than a repr
+    except Exception:  # noqa: BLE001, S110 - music21 analysis raises an
+        # undocumented range of types; a signature beats a repr, so fall through
         pass
 
     signatures = list(flat.getElementsByClass(music21.key.KeySignature))
@@ -181,7 +182,8 @@ def _bar_length(measure: music21.stream.Measure) -> float:
     """The notated length of a bar, falling back to its actual content."""
     try:
         return float(measure.barDuration.quarterLength)
-    except Exception:
+    except Exception:  # noqa: BLE001 - music21 raises an undocumented range of types; this
+        # path is best-effort by design and has a defined fallback
         return float(measure.duration.quarterLength)
 
 

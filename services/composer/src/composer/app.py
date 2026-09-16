@@ -34,7 +34,7 @@ _XML_PREFIXES = (b"<?xml", b"<score-partwise", b"<score-timewise", b"\xef\xbb\xb
 # music21 parsing is unbounded work on attacker-supplied input, under a tenant
 # quota where limits.memory covers every service in the namespace. The largest
 # score in the reference corpus is 28 KB compressed, so this is generous.
-MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", 5 * 1024 * 1024))
+MAX_UPLOAD_BYTES = int(os.environ.get("MAX_UPLOAD_BYTES", str(5 * 1024 * 1024)))
 
 
 def _suffix_for(content: bytes) -> str | None:
@@ -52,7 +52,7 @@ async def health():
 
 
 @app.post("/arrange")
-async def arrange_endpoint(file: UploadFile = File(...)):
+async def arrange_endpoint(file: UploadFile = File(...)):  # noqa: B008 - FastAPI dependency idiom
     """Accept a MusicXML piano score and return a bossa arrangement.
 
     Accepts compressed (`.mxl`) or plain (`.musicxml`, `.xml`) MusicXML,

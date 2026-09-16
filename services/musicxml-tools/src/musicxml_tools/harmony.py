@@ -29,21 +29,21 @@ from musicxml_tools.plan import (
 )
 
 __all__ = [
-    "BarChord",
     "DEFAULT_PATTERN",
     "PATTERNS",
     "ArrangementPlan",
+    "BarChord",
     "arrange_deterministically",
-    "detect_form",
     "describe_for_model",
+    "detect_chords",
+    "detect_form",
+    "detect_key",
     "plan_from_form",
     "plan_from_model",
     "plan_schema",
-    "summarise",
-    "detect_chords",
-    "detect_key",
     "render_bass",
     "render_comp",
+    "summarise",
 ]
 
 

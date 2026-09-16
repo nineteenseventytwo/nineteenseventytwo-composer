@@ -22,7 +22,6 @@ moving and moving back.
 
 from __future__ import annotations
 
-import math
 from collections import Counter
 from dataclasses import dataclass
 from typing import Any
@@ -113,7 +112,8 @@ def detect_key(ir: dict[str, Any]) -> music21.key.Key:
             continue
         try:
             return music21.key.Key(*name.split())
-        except Exception:
+        except Exception:  # noqa: BLE001, S112 - music21 raises an undocumented range of types; this
+        # path is best-effort by design and has a defined fallback
             continue
     return music21.key.Key("C")
 

@@ -16,6 +16,7 @@ reason the plan is a separate object rather than a flag on the renderer.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from itertools import pairwise
 from typing import Any
 
 import music21
@@ -91,7 +92,8 @@ def chord_pitch_classes(figure: str) -> set[int] | None:
     """The pitch classes of a chord symbol, or None if it cannot be read."""
     try:
         symbol = music21.harmony.ChordSymbol(figure)
-    except Exception:
+    except Exception:  # noqa: BLE001 - music21 raises an undocumented range of types; this
+        # path is best-effort by design and has a defined fallback
         return None
     classes = {p.pitchClass for p in symbol.pitches}
     return classes or None
@@ -115,7 +117,8 @@ def substitute(chord: BarChord, figure: str) -> BarChord | None:
         return None
     try:
         root = music21.harmony.ChordSymbol(figure).root().name
-    except Exception:
+    except Exception:  # noqa: BLE001 - music21 raises an undocumented range of types; this
+        # path is best-effort by design and has a defined fallback
         return None
     return BarChord(
         bar=chord.bar,
@@ -139,7 +142,7 @@ def plan_from_form(
     if not phrases:
         return ArrangementPlan()
 
-    next_chord = {c.bar: n.figure for c, n in zip(chords, chords[1:])}
+    next_chord = {c.bar: n.figure for c, n in pairwise(chords)}
     bars: list[BarPlan] = []
 
     for chord in chords:
@@ -248,7 +251,7 @@ def plan_from_model(
         if entry.get("index") in by_index
     }
 
-    next_figure = {c.bar: n.figure for c, n in zip(chords, chords[1:])}
+    next_figure = {c.bar: n.figure for c, n in pairwise(chords)}
     by_bar_chord = {c.bar: c for c in chords}
 
     substitutions: dict[int, str] = {}
@@ -272,9 +275,13 @@ def plan_from_model(
 
         # The model chooses the phrase's feel; leading into a chord change stays
         # a rule, because it depends on the next bar rather than on taste.
-        if phrase and chord.bar == phrase.start + phrase.length - 1:
-            if next_figure.get(chord.bar) not in (None, chord.figure):
-                bass = "anticipate" if phrase.is_repeat else "walk"
+        leads_into_a_change = (
+            phrase
+            and chord.bar == phrase.start + phrase.length - 1
+            and next_figure.get(chord.bar) not in (None, chord.figure)
+        )
+        if leads_into_a_change:
+            bass = "anticipate" if phrase.is_repeat else "walk"
 
         bars.append(BarPlan(bar=chord.bar, density=density, bass=bass))
 

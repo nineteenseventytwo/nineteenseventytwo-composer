@@ -13,11 +13,12 @@ place; nothing else depends on its exact shape.
 
 from __future__ import annotations
 
+from itertools import pairwise
 from typing import Any
 
 import music21
 
-from musicxml_tools.chords import QUALITIES, BarChord
+from musicxml_tools.chords import BarChord
 from musicxml_tools.chunking import bar_length
 
 # Sixteenth-note grid, two bars, "x" = attack. Partido alto is a samba cell:
@@ -145,11 +146,12 @@ def render_comp(
         cell = grid[chord.bar % len(grid)]
 
         hits = [i for i, mark in enumerate(cell) if mark == "x" and i * SIXTEENTH < length]
-        for index, position in enumerate(hits):
+        # Ring until the next attack, so each voicing sustains rather than
+        # stabbing — the chord is holding the bar, not punctuating it. The
+        # sentinel closes the last hit against the barline.
+        for position, nxt in pairwise([*hits, length / SIXTEENTH]):
             offset = position * SIXTEENTH
-            # Ring until the next attack, so the voicing sustains rather than
-            # stabbing — the chord is holding the bar, not punctuating it.
-            following = hits[index + 1] * SIXTEENTH if index + 1 < len(hits) else length
+            following = nxt * SIXTEENTH
             events.append(
                 {
                     "pitches": voicing,
@@ -189,7 +191,7 @@ def render_bass(
     length = bar_length(metadata.get("time_signature", "4/4"))
     pickup = float(metadata.get("pickup", 0.0) or 0.0)
     treatments = treatment_by_bar or {}
-    next_root = {c.bar: n.root for c, n in zip(chords, chords[1:])}
+    next_root = {c.bar: n.root for c, n in pairwise(chords)}
 
     events: list[dict[str, Any]] = []
     for chord in chords:

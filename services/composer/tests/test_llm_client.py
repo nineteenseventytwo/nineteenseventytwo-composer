@@ -9,7 +9,6 @@ from musicxml_tools import EXAMPLE, split_by_bars
 
 from composer.llm_client import LLMClient, PayloadTooLarge
 
-
 # Every chunk must have distinguishable content. Offsets are rebased per chunk,
 # so an arrangement of identical bars produces identical chunks and a test
 # cannot single one out. The note name cycles every 7 bars while the octave

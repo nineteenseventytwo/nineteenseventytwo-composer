@@ -4,7 +4,7 @@ import json
 
 import music21
 
-from musicxml_tools.intermediate import to_intermediate, from_intermediate, to_intermediate_json
+from musicxml_tools.intermediate import from_intermediate, to_intermediate, to_intermediate_json
 from musicxml_tools.splitter import SplitParts
 
 

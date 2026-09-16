@@ -16,6 +16,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field
+from itertools import pairwise
 from typing import Any
 
 import music21
@@ -198,7 +199,7 @@ def evaluate(source: dict[str, Any], arranged: dict[str, Any]) -> ArrangementMet
         for bar in sorted(voiced)
     ]
     if shapes:
-        changes = sum(1 for a, b in zip(shapes, shapes[1:]) if a != b)
+        changes = sum(1 for a, b in pairwise(shapes) if a != b)
         metrics.bars_per_chord = len(shapes) / (changes + 1)
 
     return metrics

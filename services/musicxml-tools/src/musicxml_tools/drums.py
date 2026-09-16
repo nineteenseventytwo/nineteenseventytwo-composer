@@ -8,7 +8,6 @@ are separate parts in the score. See docs/performance-context.md.
 
 import music21
 
-
 # Three things decide how a percussion note comes out, and conflating any two
 # of them is what kept this module broken (findings C14, C16):
 #

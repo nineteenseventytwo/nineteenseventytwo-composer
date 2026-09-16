@@ -109,7 +109,8 @@ class PlanArranger:
                 prompt=description,
                 schema=plan_schema(),
             )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - any model failure must degrade to
+            # the deterministic arrangement rather than lose the piece
             # Fall back to the fixed policy rather than to no arrangement: the
             # deterministic path is a complete, harmonically sound result, so a
             # model failure costs shape rather than the whole piece.

@@ -19,7 +19,7 @@ import music21
 # by the rule that identifies percussion unambiguously — any `midi-instrument`
 # carrying a `midi-unpitched` element belongs on channel 10.
 _PERCUSSION_CHANNEL = 10
-_MIDI_INSTRUMENT = re.compile(r"<midi-instrument\b.*?</midi-instrument>", re.S)
+_MIDI_INSTRUMENT = re.compile(r"<midi-instrument\b.*?</midi-instrument>", re.DOTALL)
 _MIDI_CHANNEL = re.compile(r"(<midi-channel>)(\d+)(</midi-channel>)")
 
 # MusicXML's <instrument-sound> is how a reader identifies a percussion voice
@@ -39,11 +39,11 @@ _INSTRUMENT_SOUNDS = {
     "Alto Saxophone": "wind.reed.saxophone.alto",
 }
 _INSTRUMENT_NAME = re.compile(r"<instrument-name>([^<]*)</instrument-name>")
-_SCORE_INSTRUMENT = re.compile(r"<score-instrument\b.*?</score-instrument>", re.S)
+_SCORE_INSTRUMENT = re.compile(r"<score-instrument\b.*?</score-instrument>", re.DOTALL)
 _MIDI_UNPITCHED = re.compile(r"<midi-unpitched>(\d+)</midi-unpitched>")
-_SCORE_PART = re.compile(r'<score-part id="([^"]+)">(.*?)</score-part>', re.S)
-_PART = re.compile(r'(<part id="([^"]+)">)(.*?)(</part>)', re.S)
-_NOTE = re.compile(r"<note\b.*?</note>", re.S)
+_SCORE_PART = re.compile(r'<score-part id="([^"]+)">(.*?)</score-part>', re.DOTALL)
+_PART = re.compile(r'(<part id="([^"]+)">)(.*?)(</part>)', re.DOTALL)
+_NOTE = re.compile(r"<note\b.*?</note>", re.DOTALL)
 _DURATION_END = re.compile(r"</duration>")
 
 from musicxml_tools.splitter import SplitParts
