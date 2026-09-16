@@ -37,3 +37,13 @@ outputs/
 
 # Temp
 *.tmp
+
+# Score corpus — deliberately not committed.
+# These are transcriptions of copyrighted material and this repo is public
+# (ADR-0013). See examples/README.md for the manifest and docs/plan/
+# 01-composer-standup.md finding C9 for the decision.
+examples/input/*
+examples/output/*
+!examples/input/.gitkeep
+!examples/output/.gitkeep
+examples/eval/
