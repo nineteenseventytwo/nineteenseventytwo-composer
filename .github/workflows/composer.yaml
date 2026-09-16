@@ -43,10 +43,13 @@ jobs:
       - name: Test
         run: pytest services/composer/
 
-  build:
+  publish:
     needs: test
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
 
@@ -54,10 +57,39 @@ jobs:
         id: version
         run: echo "version=$(cat services/composer/version.txt)" >> "$GITHUB_OUTPUT"
 
-      - name: Build image
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # arm64 only, built natively on an arm64 runner. The cluster is
+      # arm64-only (ADR-0011) and the GPU host runs Ollama's own image rather
+      # than this one, so there is no second architecture to serve and no
+      # reason to pay for emulation.
+      - uses: docker/build-push-action@v6
+        id: build
+        with:
+          context: services
+          file: services/composer/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/composer:${{ steps.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/composer:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # The platform repo pins every image by digest, so the thing it needs
+      # from this job is the digest — not the tag it was pushed under. Printed
+      # in the summary so updating apps/composer/dev/composer-deployment.yaml
+      # is a copy rather than a `docker manifest inspect`.
+      - name: Report the digest for the platform manifest
         run: |
-          docker build \
-            -f services/composer/Dockerfile \
-            -t composer:${{ steps.version.outputs.version }} \
-            services/
-          docker tag composer:${{ steps.version.outputs.version }} composer:latest
+          {
+            echo "### composer ${{ steps.version.outputs.version }} published"
+            echo
+            echo '```yaml'
+            echo "image: ghcr.io/${{ github.repository_owner }}/composer@${{ steps.build.outputs.digest }}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

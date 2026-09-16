@@ -41,21 +41,8 @@ jobs:
       - name: Test
         run: pytest --cov=musicxml_tools
 
-  build:
-    needs: test
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04-arm
-    defaults:
-      run:
-        working-directory: services/musicxml-tools
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Read version
-        id: version
-        run: echo "version=$(cat version.txt)" >> "$GITHUB_OUTPUT"
-
-      - name: Build image
-        run: |
-          docker build -t musicxml-tools:${{ steps.version.outputs.version }} .
-          docker tag musicxml-tools:${{ steps.version.outputs.version }} musicxml-tools:latest
+# No build job. musicxml-tools is a library, not a service: it is installed
+# into composer's image, and an image of its own had nothing to run — its
+# Dockerfile ENTRYPOINTed `python -m musicxml_tools`, a module that does not
+# exist, so the container would have exited immediately on every start. It was
+# never noticed because CI pointed at a runner that no longer existed.
