@@ -1,7 +1,7 @@
 # NOTE: This file is for reference and local dev/test only.
 #
 # The DEPLOYED inventory lives in the eightbitsaxlounge/server layer. The
-# console Pi (1972-console) has /etc/ansible/hosts generated from:
+# console Pi (1972-console-1) has /etc/ansible/hosts generated from:
 #   server/templates/ansiblehosts.j2
 #   server/group_vars/all/vars.yaml
 #
@@ -30,7 +30,7 @@ all:
     # CI/CD + Kubernetes master
     ci_nodes:
       hosts:
-        1972-console:
+        1972-console-1:
           ansible_host: 192.168.68.201
           ansible_user: mchellmer
 

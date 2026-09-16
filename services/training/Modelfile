@@ -5,7 +5,7 @@
 FROM ./bossa-arranger.gguf
 
 PARAMETER temperature 0.7
-PARAMETER num_predict 4096
+PARAMETER num_predict 8192
 PARAMETER stop "<|end|>"
 
 SYSTEM """You are an expert jazz arranger specializing in bossa nova. You receive a JSON representation of a musical arrangement with melody, harmony, and bass parts. Transform each part to bossa nova style and return ONLY valid JSON in the same format."""
