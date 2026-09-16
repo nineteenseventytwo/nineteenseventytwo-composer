@@ -5,14 +5,14 @@
 # It creates the mchellmer user (matching the rest of the cluster), installs SSH,
 # and places the CI Pi's public key (pi-to-midi-host) in authorized_keys.
 #
-# The CI Pi's key is ~/.ssh/pi-to-midi-host.pub on 1972-console.
+# The CI Pi's key is ~/.ssh/pi-to-midi-host.pub on 1972-console-1.
 # It already exists if init-pc.yaml has been run before for the Windows side.
 #
 # Usage:
 #   sudo bash bootstrap-linux.sh "<ci-pi-pi-to-midi-host.pub contents>"
 #
 # To get the key from the console Pi:
-#   cat ~/.ssh/pi-to-midi-host.pub    (on 1972-console)
+#   cat ~/.ssh/pi-to-midi-host.pub    (on 1972-console-1)
 #
 # After this script completes:
 #   1. From the console Pi: ansible -i /etc/ansible/hosts gpu_nodes -m ping
@@ -112,5 +112,5 @@ echo ""
 echo "Next steps:"
 echo "  1. Set a DHCP reservation in the Deco app for this machine's Ethernet MAC -> $IP"
 echo "     (same IP as Windows/midi-host so the entry in hosts is shared)"
-echo "  2. From 1972-console: ansible -i /etc/ansible/hosts gpu_nodes -m ping"
+echo "  2. From 1972-console-1: ansible -i /etc/ansible/hosts gpu_nodes -m ping"
 echo "  3. Run the GPU node setup playbook (see infra/README.md in the composer repo)"
