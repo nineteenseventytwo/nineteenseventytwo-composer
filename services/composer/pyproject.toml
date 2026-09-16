@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68.0", "wheel"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "composer"
@@ -12,7 +12,11 @@ dependencies = [
     "uvicorn[standard]>=0.30",
     "httpx>=0.27",
     "python-multipart>=0.0.9",
-    "musicxml-tools @ file:///${PROJECT_ROOT}/../musicxml-tools",
+    # Declared by name, not by path. "@ file:///${PROJECT_ROOT}/../musicxml-tools"
+    # is a PDM-ism — pip does not expand ${PROJECT_ROOT}, so it resolved to
+    # /musicxml-tools and the install failed. The sibling package is installed
+    # first by both CI and the Dockerfile, which leaves this satisfied.
+    "musicxml-tools",
 ]
 
 [project.optional-dependencies]
