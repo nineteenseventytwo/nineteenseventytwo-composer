@@ -57,6 +57,14 @@ jobs:
         id: version
         run: echo "version=$(cat services/composer/version.txt)" >> "$GITHUB_OUTPUT"
 
+      # Required before the build step, not optional. The runner's default
+      # builder uses the `docker` driver, which cannot export a cache — the
+      # GHA cache below fails it outright with "Cache export is not supported
+      # for the docker driver". This sets up a `docker-container` driver,
+      # which can. It passes locally without this because Docker Desktop
+      # already provides such a builder.
+      - uses: docker/setup-buildx-action@v3
+
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -86,6 +94,12 @@ jobs:
       # is a copy rather than a `docker manifest inspect`.
       - name: Report the digest for the platform manifest
         run: |
+          # An empty digest means the push silently did not happen, and the
+          # platform repo would be handed a pin to nothing.
+          test -n "${{ steps.build.outputs.digest }}" || {
+            echo "::error::build produced no digest — the image was not pushed"
+            exit 1
+          }
           {
             echo "### composer ${{ steps.version.outputs.version }} published"
             echo
