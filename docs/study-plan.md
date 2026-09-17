@@ -130,7 +130,7 @@ kubectl describe node 1972-home | grep -A5 "Capacity"
 # Expect: nvidia.com/gpu: 1
 
 # Ollama using GPU not CPU
-kubectl logs -l app=llm-server | grep -i gpu
+# inference now runs off-cluster on the GPU host — see docs/plan/01-composer-standup.md D-A
 
 # VRAM usage during a request
 ssh mchellmer@<tailscale-ip>

@@ -18,7 +18,12 @@ from musicxml_tools import (
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_BASE_URL = "http://llm-server:11434"
+# Localhost, not an in-cluster service name. Inference runs off-cluster on the
+# GPU host (D-A), so there is no `llm-server` Service to resolve — that name
+# survived from the rejected design where Ollama was a cluster workload. In
+# deployment this is always set explicitly; localhost is what makes a developer
+# with Ollama running work without configuration.
+DEFAULT_BASE_URL = "http://localhost:11434"
 DEFAULT_MODEL = "llama3.1:8b"
 
 # Ollama applies a small default context window — 2048 in older builds, 4096 in

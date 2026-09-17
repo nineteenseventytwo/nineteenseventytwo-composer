@@ -17,12 +17,30 @@ Thin FastAPI shell. Writes the upload to a temp file, calls `arrange()`, returns
 ### `pipeline.py`
 The pipeline function `arrange()`. Calls musicxml-tools for parsing/splitting/assembling, calls `LLMClient` for the style transformation. This is the only file that knows about the full sequence of steps.
 
-### `llm_client.py`
-HTTP client for Ollama. Two methods:
-- `transform_to_bossa(ir)` — the public API: send JSON, get JSON back
-- `_chat(prompt)` — private: sends the actual HTTP request to `/api/chat`
+### `arrangers.py`
+The strategies, selected by `COMPOSER_ARRANGER`. `deterministic` (the default)
+needs no model at all; `plan` asks a model how each phrase should be played;
+`notes` is the original approach, kept for comparison. Each returns the same
+`TransformResult`, so the pipeline does not know which it called.
 
-The system prompt lives here — it's the set of instructions that tells the LLM what role to play and what to do. This is called **prompt engineering**. The prompt explains bossa bass patterns, chord voicings, and melody phrasing in musical terms that the model (trained on text including music theory) understands.
+### `llm_client.py`
+HTTP client for Ollama.
+- `transform_to_bossa(ir)` — the chunked note-rewriting path
+- `ask_json(system, prompt, schema)` — one schema-constrained question, used
+  by the plan arranger
+
+Requests are constrained by a JSON schema rather than asked politely for JSON,
+which is both more reliable and *faster* than free generation — the grammar
+stops the model rambling.
+
+### `evaluate.py`
+Compares an arrangement with its source: root grounding, harmonic fidelity,
+coverage, harmonic rhythm. Every metric exists because listening caught
+something the previous set had passed.
+
+### `eval_cli.py`
+`python -m composer.eval_cli examples/input/*.mxl` — runs the transform over a
+set of scores and reports how well each was arranged.
 
 ## The LLM Call in Detail
 
@@ -52,7 +70,7 @@ Temperature 0.7 is a common default — 0 = deterministic/repetitive, 1+ = creat
 
 | Variable | Default | Description |
 |---|---|---|
-| `LLM_BASE_URL` | `http://llm-server:11434` | Ollama API base URL |
+| `LLM_BASE_URL` | `http://localhost:11434` | Ollama API base URL. Set explicitly in deployment — inference runs off-cluster (D-A) |
 | `LLM_MODEL` | `llama3:8b` | Model name |
 | `LOG_LEVEL` | `info` | Logging level |
 

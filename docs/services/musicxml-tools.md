@@ -32,41 +32,31 @@ Offsets are in **quarter notes**. A note at `offset=1.0` starts on beat 2 of a 4
 
 ## Key Files
 
-### `parser.py`
-One function: `parse_score(filepath)`. Calls `music21.converter.parse()` and ensures the result is a `Score` (wrapping it if not). The simplest module.
+Two groups. The first turns a score into a representation and back again; the
+second works out what to play.
 
-### `splitter.py`
-The most musically interesting module. Takes a piano score and produces three separate parts.
+### Reading and writing a score
 
-**Strategy for two-staff piano scores:**
-- `parts[0]` (treble/right hand) → highest notes become melody, rest becomes harmony
-- `parts[1]` (bass/left hand) → lowest notes become bass, upper notes join harmony
+| File | Responsibility |
+|---|---|
+| `parser.py` | MusicXML → a music21 `Score`. Handles `.mxl` (zipped) as well as plain XML |
+| `splitter.py` | A piano texture → melody, harmony, bass. Descends into `Voice` objects, trims melody and bass to single lines, and takes harmony from `chordify()` with the pitches melody and bass already claimed subtracted |
+| `intermediate.py` | ↔ compact JSON, carrying metre and any pickup bar so a rebuilt part can be re-barred correctly |
+| `schema.py` | One definition of that JSON, used to constrain decoding, validate replies, and render the prompt's example |
+| `chunking.py` | Bar-aligned slices that split and merge exactly, so a long score can be transformed in pieces |
+| `assembler.py` | Parts → a score a reader can play: instruments, ranges, clefs, transposition, and the percussion repairs music21 will not emit |
 
-**The voice extraction logic:**
-Groups notes by their offset (beat position) within each measure. For melody it takes the highest-pitched note at each offset; for bass, the lowest. Everything else goes to harmony.
+### Deciding what to play
 
-This is a simplification — real voice leading is more nuanced — but works well as a starting point for the LLM to refine.
+| File | Responsibility |
+|---|---|
+| `chords.py` | Which chord each bar sits on. Viterbi over the diatonic sevenths of the detected key, weighted toward the bass and charged for changing |
+| `form.py` | Which phrases repeat, and how often each has been heard |
+| `reharmonise.py` | Which substitutions a bar could legitimately take |
+| `plan.py` | How each bar is played — density, bass treatment, substitution — as an object a model can produce and a validator can check |
+| `comping.py` | Rootless voicings on a rhythmic grid, and the bass line |
+| `drums.py` | The kit and the shaker, on the bossa clave |
 
-### `intermediate.py`
-Converts between music21 objects and the JSON format the LLM consumes.
-
-`to_intermediate()` flattens each Part into a list of simple dicts. `part.flatten()` in music21 removes the Measure hierarchy and gives you a linear sequence of notes — useful when you just want "all the notes in order."
-
-`from_intermediate()` reconstructs music21 Parts from the JSON the LLM returns, using `part.insert(offset, element)` to place each note at its beat position.
-
-### `assembler.py`
-`assemble_score()` combines the transformed parts back into a full Score, sets instruments (Alto Sax, Piano, Electric Bass), sets tempo and title from the original metadata, and optionally adds the drum part.
-
-`write_score()` calls music21's `score.write("musicxml", fp=...)` to produce the final output file.
-
-### `drums.py`
-Generates the bossa drum pattern algorithmically — no AI needed. The classic 2-bar bossa pattern:
-
-```
-Hi-hat:      x x x x x x x x   (steady eighth notes)
-Cross-stick: . x . . . x . .   (beats 2 and 4)
-Bass drum:   x . . x . x . .   (bar 1: beat 1, and-of-2, beat 4)
-             . x . . x . . x   (bar 2: and-of-1, beat 3, and-of-4)
-```
-
-Uses `music21.note.Unpitched` with General MIDI numbers: bass drum = 36, side stick = 38, closed hi-hat = 42.
+The split matters: everything in the first group is reversible mechanics, and
+everything in the second is a musical decision. Only the second group has
+anything a model could usefully be asked about.
