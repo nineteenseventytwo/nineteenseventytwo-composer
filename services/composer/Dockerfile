@@ -4,10 +4,19 @@
 # eightbitsaxlounge base images.
 FROM python:3.12-slim@sha256:3949e4271b0a3ff82afac7306764c313dcc8edeeb89c0376a3c2ac6007c66b1d
 
-# uid 1000 explicitly. The Deployment sets runAsNonRoot with runAsUser: 1000,
-# and a securityContext naming a uid the image does not have is a pod that
-# starts as a stranger in its own filesystem. Created here so the two agree.
-RUN useradd --uid 1000 --create-home --shell /usr/sbin/nologin app
+# A high uid, explicitly. Two reasons it is 10001 rather than the conventional
+# 1000:
+#
+# The Deployment sets runAsNonRoot with a matching runAsUser, and a
+# securityContext naming a uid the image does not have is a pod running as a
+# stranger in its own filesystem — so the two must agree wherever it lands.
+#
+# And CKV_K8S_40 wants a uid above the range a host assigns to real people, so
+# that a container escape or a mishandled host mount cannot land on a human's
+# files. The eightbitsaxlounge manifests skip that check because uid 1000 is
+# baked into images this estate does not control; composer's image is built
+# here, so the check gets a fix rather than an exemption.
+RUN useradd --uid 10001 --create-home --shell /usr/sbin/nologin app
 
 WORKDIR /app
 
@@ -22,7 +31,7 @@ COPY composer/src/ src/
 
 RUN pip install --no-cache-dir .
 
-USER 1000
+USER 10001
 
 EXPOSE 8000
 
