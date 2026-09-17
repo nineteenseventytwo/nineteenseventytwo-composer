@@ -1,15 +1,17 @@
 name: composer
 
+# No path filters. The required status check is named `test`, so a pull
+# request that triggers neither workflow never reports one and blocks
+# indefinitely — which is exactly what happened to the PR that changed only
+# this file. Narrowing the filter to also match .github/workflows/** would fix
+# that one case and leave a docs-only change stuck in the same way.
+#
+# The suite runs in about 25 seconds. Path filters were not buying enough to
+# be worth a class of unmergeable pull request.
 on:
   push:
-    paths:
-      - 'services/composer/**'
-      - 'services/musicxml-tools/**'
     branches: [main]
   pull_request:
-    paths:
-      - 'services/composer/**'
-      - 'services/musicxml-tools/**'
 
 # Hosted runners only. A `pull_request` trigger on a public repo pointed at a
 # self-hosted runner is a documented remote-code-execution path — a fork PR can
