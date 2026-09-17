@@ -1,15 +1,17 @@
 name: composer
 
+# No path filters. The required status check is named `test`, so a pull
+# request that triggers neither workflow never reports one and blocks
+# indefinitely — which is exactly what happened to the PR that changed only
+# this file. Narrowing the filter to also match .github/workflows/** would fix
+# that one case and leave a docs-only change stuck in the same way.
+#
+# The suite runs in about 25 seconds. Path filters were not buying enough to
+# be worth a class of unmergeable pull request.
 on:
   push:
-    paths:
-      - 'services/composer/**'
-      - 'services/musicxml-tools/**'
     branches: [main]
   pull_request:
-    paths:
-      - 'services/composer/**'
-      - 'services/musicxml-tools/**'
 
 # Hosted runners only. A `pull_request` trigger on a public repo pointed at a
 # self-hosted runner is a documented remote-code-execution path — a fork PR can
@@ -57,6 +59,14 @@ jobs:
         id: version
         run: echo "version=$(cat services/composer/version.txt)" >> "$GITHUB_OUTPUT"
 
+      # Required before the build step, not optional. The runner's default
+      # builder uses the `docker` driver, which cannot export a cache — the
+      # GHA cache below fails it outright with "Cache export is not supported
+      # for the docker driver". This sets up a `docker-container` driver,
+      # which can. It passes locally without this because Docker Desktop
+      # already provides such a builder.
+      - uses: docker/setup-buildx-action@v3
+
       - uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -86,6 +96,12 @@ jobs:
       # is a copy rather than a `docker manifest inspect`.
       - name: Report the digest for the platform manifest
         run: |
+          # An empty digest means the push silently did not happen, and the
+          # platform repo would be handed a pin to nothing.
+          test -n "${{ steps.build.outputs.digest }}" || {
+            echo "::error::build produced no digest — the image was not pushed"
+            exit 1
+          }
           {
             echo "### composer ${{ steps.version.outputs.version }} published"
             echo
