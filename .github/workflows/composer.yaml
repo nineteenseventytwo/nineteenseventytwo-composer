@@ -77,6 +77,29 @@ jobs:
       # arm64-only (ADR-0011) and the GPU host runs Ollama's own image rather
       # than this one, so there is no second architecture to serve and no
       # reason to pay for emulation.
+      # Build and load locally first, scan, and only then push — so a
+      # vulnerable image is never published. Same bar as the platform repo's
+      # weekly image-vuln-scan.yml (critical, fixable only), so the two agree
+      # on what counts. The push below reuses this build from the GHA cache.
+      - uses: docker/build-push-action@v6
+        with:
+          context: services
+          file: services/composer/Dockerfile
+          platforms: linux/arm64
+          load: true
+          tags: composer:scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Scan image (Trivy)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          image-ref: composer:scan
+          severity: CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
       - uses: docker/build-push-action@v6
         id: build
         with:
