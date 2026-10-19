@@ -2,7 +2,7 @@
 # the weekly vulnerability scan cannot say anything useful about a moving
 # target — the same finding that pinned this repo's music21 dependency and the
 # eightbitsaxlounge base images.
-FROM python:3.12-slim@sha256:3949e4271b0a3ff82afac7306764c313dcc8edeeb89c0376a3c2ac6007c66b1d
+FROM python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
 
 # A high uid, explicitly. Two reasons it is 10001 rather than the conventional
 # 1000:
