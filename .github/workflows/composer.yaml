@@ -29,6 +29,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Secrets block, at every severity, in the required check - this repo
+      # is private (platform ADR-0019), so GitHub's free push protection no
+      # longer applies, and this is what replaces it.
+      - name: Trivy secret scan (blocking)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scanners: secret
+          exit-code: "1"
+          format: table
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
