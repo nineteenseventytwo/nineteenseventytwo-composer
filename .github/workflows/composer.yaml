@@ -29,9 +29,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Secrets block, at every severity, in the required check - this repo
-      # is private (platform ADR-0019), so GitHub's free push protection no
-      # longer applies, and this is what replaces it.
+      # Secrets block, at every severity, in the required check. GitHub's
+      # push protection only knows provider token formats; this also catches
+      # generic keys and private keys - the class of thing (a stream key) that
+      # leaked from eightbitsaxlounge before #98.
       - name: Trivy secret scan (blocking)
         uses: aquasecurity/trivy-action@v0.36.0
         with:
