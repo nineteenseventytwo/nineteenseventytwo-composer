@@ -29,6 +29,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Secrets block, at every severity, in the required check. GitHub's
+      # push protection only knows provider token formats; this also catches
+      # generic keys and private keys - the class of thing (a stream key) that
+      # leaked from eightbitsaxlounge before #98.
+      - name: Trivy secret scan (blocking)
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scanners: secret
+          exit-code: "1"
+          format: table
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
