@@ -2,7 +2,19 @@
 # the weekly vulnerability scan cannot say anything useful about a moving
 # target — the same finding that pinned this repo's music21 dependency and the
 # eightbitsaxlounge base images.
-FROM python:3.12-slim@sha256:a6e34c598f2467ed0e9a8d349809fcd8b5c603269512df273a0bb1784edc11b1
+FROM python:3.12-slim@sha256:5e2bdb1b0d542d5039cffb8181c65930093949194a65c365dfb1b0fe13a4fa5b
+
+# Debian's security fixes for packages the base already ships (apt, zlib1g)
+# land in trixie-security days before python:3.12-slim is rebuilt with them,
+# and nothing else here touches apt, so without this step the image carries
+# them until the next digest bump (CVE-2026-85091, 2026-11-11).
+# IMAGE_VERSION is version.txt, passed by composer.yaml: the build cache keys
+# this layer on its RUN text, so a version bump is what re-runs it.
+ARG IMAGE_VERSION=dev
+RUN echo "image ${IMAGE_VERSION}" \
+ && apt-get update \
+ && apt-get upgrade -y \
+ && rm -rf /var/lib/apt/lists/*
 
 # A high uid, explicitly. Two reasons it is 10001 rather than the conventional
 # 1000:
